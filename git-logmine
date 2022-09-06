@@ -1,0 +1,88 @@
+#!/usr/bin/env node
+
+const { exec } = require("child_process");
+const { promisify } = require("util");
+
+const execProm = promisify(exec);
+
+const LAST_MONTH_FLAG = "--lastmonth";
+const THIS_MONTH_FLAG = "--thismonth";
+const DATE_FORMAT = "--date=iso-strict";
+
+async function run(shellCommand) {
+  const { stdout, stderr } = await execProm(shellCommand);
+
+  if (stderr) {
+    throw new Error(stderr);
+  } else {
+    return stdout;
+  }
+}
+
+async function getEmail() {
+  const email = await run("git config user.email");
+  return email.trim();
+}
+
+async function gitLog(email, additionalParams = "") {
+  return await run(`git log --author="${email}" ${additionalParams}`);
+}
+
+function copyDate(date) {
+  return new Date(date);
+}
+
+function nextMonth(date) {
+  return new Date(copyDate(date).setMonth(date.getMonth() + 1));
+}
+
+function previousMonth(date) {
+  return new Date(copyDate(date).setMonth(date.getMonth() - 1));
+}
+
+function endOfMonth(date) {
+  return new Date(copyDate(nextMonth(date)).setDate(0));
+}
+
+function beginningOfMonth(date) {
+  return new Date(copyDate(date).setDate(1));
+}
+
+function lastMonthString() {
+  const after = beginningOfMonth(previousMonth(new Date()));
+  after.setHours(0, 0, 0, 1);
+  const before = beginningOfMonth(new Date());
+  before.setHours(0, 0, 0, 1);
+  return `--after="${after.toISOString()}" --before="${before.toISOString()}" ${DATE_FORMAT}`;
+}
+
+function thisMonthString() {
+  const after = beginningOfMonth(new Date());
+  after.setHours(0, 0, 0, 1);
+  return `--after="${after.toISOString()}" ${DATE_FORMAT}`;
+}
+
+const allArgsExcept = (argsArray, argument) =>
+  argsArray.filter((arg) => arg.toLowerCase() !== argument);
+
+const parseCLIArgs = () => {
+  const args = process.argv.slice(2);
+
+  if (args.map((arg) => arg.toLowerCase()).includes(LAST_MONTH_FLAG)) {
+    return (
+      lastMonthString() + " " + allArgsExcept(args, LAST_MONTH_FLAG).join(" ")
+    );
+  } else if (args.map((arg) => arg.toLowerCase()).includes(THIS_MONTH_FLAG)) {
+    return (
+      thisMonthString() + " " + allArgsExcept(args, THIS_MONTH_FLAG).join(" ")
+    );
+  }
+
+  return args.join(" ");
+};
+
+const cliArgs = parseCLIArgs();
+
+getEmail()
+  .then((email) => gitLog(email, cliArgs))
+  .then(console.log);

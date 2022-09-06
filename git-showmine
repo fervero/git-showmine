@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+
+const { exec } = require("child_process");
+const { promisify } = require("util");
+
+const execProm = promisify(exec);
+
+async function run(shellCommand) {
+  const { stdout, stderr } = await execProm(shellCommand);
+
+  if (stderr) {
+    throw new Error(stderr);
+  } else {
+    return stdout;
+  }
+}
+
+async function getCommitBody(hash) {
+  const command = `git --no-pager show ${hash} -- . ':(exclude)package-lock.json' ':(exclude)yarn.lock'`;
+  return await run(command);
+}
+
+async function getCommitBodies(hashesArray) {
+  const commitBodies = [];
+
+  for (const hash of hashesArray) {
+    const commitBody = await getCommitBody(hash);
+    commitBodies.push(commitBody);
+  }
+
+  return commitBodies.join();
+}
+
+async function showMine() {
+  const args = process.argv.slice(2);
+  const hashesString = await run(
+    `git logmine --format=format:%H ${args.join(" ")}`
+  );
+  const hashesArray = hashesString.split(/\s/).filter(Boolean);
+  return getCommitBodies(hashesArray);
+}
+
+showMine().then(console.log).catch(console.log);
